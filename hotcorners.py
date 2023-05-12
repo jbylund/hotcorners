@@ -2,13 +2,14 @@
 
 import argparse
 import configparser
-import os
-import subprocess
-import cachetools.func
 import logging
+import os
+import shlex
+import subprocess
 
+import cachetools.func
 from pynput import mouse
-
+from pynput.keyboard import Controller, Key
 from Xlib import X, display
 from Xlib.ext.xtest import fake_input
 
@@ -35,6 +36,7 @@ def get_action_map():
     try:
         with open(rcfile) as cfgfile:
             config.read(rcfile)
+        logger.info("Refreshing the config...")
     except FileNotFoundError:
         config.add_section(CONFIG_SECTION)
         config.set(CONFIG_SECTION, BOTTOM_LEFT, "")
@@ -69,9 +71,18 @@ def run_poller():
 
     bounce = 200  # this is used to move back towards the center of the screen
     disp = display.Display()
+    processes = []
+
+    keyboard = Controller()
+
+    armed = set()
 
     def fire_action(action):
         logger.info(f"Firing action: %s ...", action)
+        p = subprocess.Popen(
+            shlex.split(action),
+        )
+        processes.append(p)
 
     def mousemove(x, y):
         fake_input(disp, X.MotionNotify, x=x, y=y)
@@ -87,16 +98,37 @@ def run_poller():
         mousemove(x, y)
 
     def on_move(x, y):
+        if armed:
+            return
         pos = (x, y)
         action_map = get_action_map()
         corner = pos_to_name.get(pos)
-        action = action_map.get(corner)
-        if action:
-            fire_action(action)
+        if corner:
+            action = action_map.get(corner)
+            if action:
+                fire_action(action)
+            else:
+                keyboard.press(Key.alt)
+                with keyboard.pressed(Key.tab):
+                    pass
+                armed.add(1)
+
             move_towards_center(pos)
 
-    with mouse.Listener(on_move=on_move) as listener:
-        listener.join()
+    def on_click(*_):
+        # x, y, button, pressed
+        if armed:
+            keyboard.release(Key.alt)
+            armed.clear()
+
+    try:
+        with mouse.Listener(
+            on_click=on_click,
+            on_move=on_move,
+        ) as listener:
+            listener.join()
+    except KeyboardInterrupt:
+        pass
 
 
 def get_args():
