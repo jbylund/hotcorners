@@ -24,8 +24,7 @@ TOP_RIGHT = "top_right_corner_command"
 
 
 def kill_running_instances():
-    logger.warning("Attempting to kill any running instances...")
-    os.system("pkill -9 -f bl-hotcorners")
+    logger.warning("Not implemented yet...")
 
 
 @cachetools.func.ttl_cache(maxsize=1, ttl=10)
