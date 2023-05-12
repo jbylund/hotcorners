@@ -1,0 +1,3 @@
+cachetools
+pynput
+python-xlib
