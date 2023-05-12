@@ -4,16 +4,15 @@ import argparse
 import configparser
 import os
 import subprocess
-import time
 import cachetools.func
+import logging
+
+from pynput import mouse
 
 from Xlib import X, display
 from Xlib.ext.xtest import fake_input
 
-
-def kill_running_instances():
-    print("Attempting to kill any running instances...")
-    os.system("pkill -9 -f bl-hotcorners")
+logger = logging.getLogger("hotcorners")
 
 CONFIG_SECTION = "Hot Corners"
 
@@ -21,6 +20,11 @@ BOTTOM_LEFT = "bottom_left_corner_command"
 BOTTOM_RIGHT = "bottom_right_corner_command"
 TOP_LEFT = "top_left_corner_command"
 TOP_RIGHT = "top_right_corner_command"
+
+
+def kill_running_instances():
+    logger.warning("Attempting to kill any running instances...")
+    os.system("pkill -9 -f bl-hotcorners")
 
 
 @cachetools.func.ttl_cache(maxsize=1, ttl=10)
@@ -41,35 +45,20 @@ def get_action_map():
             os.makedirs(cfgdir)
         with open(rcfile, "w") as cfgfile:
             config.write(cfgfile)
-    
-    # should come from the config file
-    # should also be cached behind a ttl cache
+
     return dict(config[CONFIG_SECTION].items())
 
 
-def fire_action(action):
-    print(f"Firing action: {action}")
-    # os.system("(" + action + ") &")
+def get_screen_dims():
+    screen = display.Display().screen()
+    return screen.width_in_pixels, screen.height_in_pixels
 
 
 def run_poller():
-    check_intervall = 0.2
-    dims_output = subprocess.check_output(["xdotool", "getdisplaygeometry"]).decode().strip()
-    width, height = [int(x) for x in dims_output.split()]
+    width, height = get_screen_dims()
+
     rt = width - 1
     bt = height - 1
-
-    bounce = 40  # this is used to move back towards the center of the screen
-    disp = display.Display()
-    root = display.Display().screen().root
-
-    def mousepos():
-        data = root.query_pointer()._data
-        return data["root_x"], data["root_y"]
-
-    def mousemove(x, y):
-        fake_input(disp, X.MotionNotify, x=x, y=y)
-        disp.sync()
 
     pos_to_name = {
         (0, 0): TOP_LEFT,
@@ -78,26 +67,36 @@ def run_poller():
         (rt, bt): BOTTOM_RIGHT,
     }
 
-    def move_towards_center():
+    bounce = 200  # this is used to move back towards the center of the screen
+    disp = display.Display()
+
+    def fire_action(action):
+        logger.info(f"Firing action: %s ...", action)
+
+    def mousemove(x, y):
+        fake_input(disp, X.MotionNotify, x=x, y=y)
+        disp.sync()
+
+    def move_towards_center(pos):
         # move the mouse back towards the center of the screen
-        oldx, oldy = x, y = mousepos()
+        oldx, oldy = x, y = pos
         bool_to_sign = {True: bounce, False: -bounce}
         x += bool_to_sign[2 * x < width]
         y += bool_to_sign[2 * y < height]
-        print(f"Moving from ({oldx}, {oldy}) to ({x}, {y})")
+        logger.info(f"Moving from (%d, %d) to (%d, %d)...", oldx, oldy, x, y)
         mousemove(x, y)
 
-    while True:
-        # do we need to refresh the config file every sleep interval?
-        # seems excessive
+    def on_move(x, y):
+        pos = (x, y)
         action_map = get_action_map()
-        time.sleep(check_intervall)
-        pos = mousepos()
         corner = pos_to_name.get(pos)
         action = action_map.get(corner)
         if action:
             fire_action(action)
-            move_towards_center()
+            move_towards_center(pos)
+
+    with mouse.Listener(on_move=on_move) as listener:
+        listener.join()
 
 
 def get_args():
@@ -113,6 +112,7 @@ def get_args():
 
 
 def main():
+    logging.basicConfig(level=logging.INFO)
     opts = get_args()
 
     if opts["kill"]:
@@ -120,8 +120,7 @@ def main():
     elif opts["daemon"]:
         run_poller()
     else:
-        print("No arguments given. Exiting...")
-        exit()
+        logger.warning("No arguments given. Exiting...")
 
 
 if __name__ == "__main__":
