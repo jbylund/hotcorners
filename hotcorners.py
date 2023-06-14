@@ -6,6 +6,7 @@ import logging
 import os
 import shlex
 import subprocess
+import time
 
 import cachetools.func
 from pynput import mouse
@@ -77,7 +78,7 @@ def run_poller():
     armed = set()
 
     def fire_action(action):
-        logger.info(f"Firing action: %s ...", action)
+        logger.info("Firing action: %s ...", action)
         p = subprocess.Popen(
             shlex.split(action),
         )
@@ -93,7 +94,7 @@ def run_poller():
         bool_to_sign = {True: bounce, False: -bounce}
         x += bool_to_sign[2 * x < width]
         y += bool_to_sign[2 * y < height]
-        logger.info(f"Moving from (%d, %d) to (%d, %d)...", oldx, oldy, x, y)
+        logger.info("Moving from (%d, %d) to (%d, %d)...", oldx, oldy, x, y)
         mousemove(x, y)
 
     def on_move(x, y):
@@ -106,13 +107,14 @@ def run_poller():
             action = action_map.get(corner)
             if action:
                 fire_action(action)
+                move_towards_center(pos)
             else:
                 keyboard.press(Key.alt)
                 with keyboard.pressed(Key.tab):
                     pass
                 armed.add(1)
-
-            move_towards_center(pos)
+                time.sleep(0.1)
+                mousemove(rt // 2, bt // 2)
 
     def on_click(*_):
         # x, y, button, pressed
