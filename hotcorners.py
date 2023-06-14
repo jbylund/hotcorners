@@ -36,7 +36,7 @@ def get_action_map():
     try:
         with open(rcfile) as cfgfile:
             config.read(rcfile)
-        logger.info("Refreshing the config...")
+        logger.info("Refreshing the config (%s)...", rcfile)
     except FileNotFoundError:
         config.add_section(CONFIG_SECTION)
         config.set(CONFIG_SECTION, BOTTOM_LEFT, "")
